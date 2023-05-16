@@ -58,7 +58,7 @@ from PyQt6.QtGui import QPixmap, QTransform
 
 from flask import Flask, request
 
-# Receives requ
+# Receives requests
 class ServerWorker(QObject):
     mysignal = pyqtSignal(str)
     http_server = Flask("RoverSimUi")
@@ -73,8 +73,35 @@ class ServerWorker(QObject):
         self.mysignal.emit(bodyText)
         return request.data
 
+class Rover:
+    posX = 0
+    posY = 0
+    speedL = 0
+    speedR = 0
+    servos = [0] * 16
+    rgbLeds = [[0,0,0]] * 4
+
+    def setServo(self, servoId, value):
+        self.servos[servoId] = value
+
+    def setWheelMotorLeft(self, fwd, rev):
+        if fwd > 0 & rev > 0:
+            self.speedL = 0
+        else:
+            self.speedL = fwd - rev
+
+    def setWheelMotorRight(self, fwd, rev):
+        if fwd > 0 & rev > 0:
+            self.speedR = 0
+        else:
+            self.speedR = fwd - rev
+
+    def setRgbLed(self, ledId, rgbValues):
+        self.rgbLeds[ledId] = rgbValues
 
 class MainWindow(QWidget):
+    rover = Rover()
+
     def __init__(self, parent=None):
         QWidget.__init__(self, parent)
 
@@ -109,12 +136,34 @@ class MainWindow(QWidget):
 
     def on_change(self, s):
         data = json.loads(s)
+        if 'servos' in data:
+            servos = data['servos']
+            for servo in servos:
+                servoId = int(servo)
+                self.rover.setServo(servoId, servos[servo])
+
+        if 'wheelMotors' in data:
+            wheelMotors = data['wheelMotors']
+            if 'l' in wheelMotors:
+                [fwd, rev] = wheelMotors['l']
+                self.rover.setWheelMotorLeft(fwd, rev)
+            if 'r' in wheelMotors:
+                [fwd, rev] = wheelMotors['r']
+                self.rover.setWheelMotorRight(fwd, rev)
+
+        if 'rgbLeds' in data:
+            rgbLeds = data['rgbLeds']
+            for led in rgbLeds:
+                ledId = int(led)
+                self.rover.setRgbLed(ledId, rgbLeds[led])
+
+
         self.helloMsg.setText(s)
-        self.scRover.setPos(data['location']['x'], data['location']['y'])
-        tx = QTransform()
-        tx.rotate(data['rotation'])
-        self.scRover.setTransform(tx)
-        #self.roverIcon.move(data['location']['x'], data['location']['y'])
+        # self.scRover.setPos(data['location']['x'], data['location']['y'])
+        # tx = QTransform()
+        # tx.rotate(data['rotation'])
+        # self.scRover.setTransform(tx)
+        # #self.roverIcon.move(data['location']['x'], data['location']['y'])
 
 
 app = QApplication([])
