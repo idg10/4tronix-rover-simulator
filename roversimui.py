@@ -50,9 +50,11 @@
 # This reports the detected range from the ultrasonic sensor.
    
 import sys
+import math
+from time import time
 import json
 
-from PyQt6.QtCore import QThread, QObject, Qt, pyqtSignal
+from PyQt6.QtCore import QThread, QObject, QTimer, pyqtSignal
 from PyQt6.QtWidgets import QApplication, QLabel, QWidget, QGraphicsScene, QGraphicsView
 from PyQt6.QtGui import QPixmap, QTransform
 
@@ -73,9 +75,13 @@ class ServerWorker(QObject):
         self.mysignal.emit(bodyText)
         return request.data
 
+fullSpeedCmPerSecond = 10
+
 class Rover:
+    timeOfLastUpdate = time()
     posX = 0
     posY = 0
+    headingInDegrees = 0
     speedL = 0
     speedR = 0
     servos = [0] * 16
@@ -98,9 +104,48 @@ class Rover:
 
     def setRgbLed(self, ledId, rgbValues):
         self.rgbLeds[ledId] = rgbValues
+    
+    def updateState(self):
+        currentTime = time()
+        timeSinceLastUpdate = currentTime - self.timeOfLastUpdate
+        self.timeOfLastUpdate = currentTime
+
+        # This is a bit too basic. We need to take into
+        # account wheel servo orientation to work out how
+        # much each side moves, and in which direction,
+        # and to deduce the rotation of the rover from that.
+        # But it will do for now.
+        averageSpeed = (self.speedL + self.speedR) / 2
+
+        # The motor speed is just a number from 0 (not moving)
+        # to 100 (full speed). We need to convert that to an
+        # actual speed:
+        averageSpeedCmPerSecond = averageSpeed / 100.0 * fullSpeedCmPerSecond
+
+        # The program probably won't manage to update at exactly the
+        # same interval - when the computer's busy or running slowly for
+        # some reason, there might be longer gaps between updates. So we
+        # need to work out how far the rover will have travelled based
+        # not just on its speed, but also on how long it has been since the
+        # last update.
+        distanceMovedCmSinceLastUpdate = averageSpeedCmPerSecond * timeSinceLastUpdate 
+        
+        # Of course, the rover probably isn't heading exactly up/down/left/right,
+        # so we can't just add the distance moved to posX or posY. We need to
+        # work out how to split the distance between those two directions based on
+        # the direction the rover is pointing. For this, we use trigonometry! Yay!
+        # First, computers always want things in Radians, not Degrees, because reasons
+        headingInRadians = (self.headingInDegrees / 180) * math.pi
+        xChangeCm = -distanceMovedCmSinceLastUpdate * math.sin(headingInRadians)
+        yChangeCm = distanceMovedCmSinceLastUpdate * math.cos(headingInRadians)
+        self.posX += xChangeCm
+        self.posY += yChangeCm
+        print("X,Y: " + str(self.posX) + ", " + str(self.posY))
+
 
 class MainWindow(QWidget):
     rover = Rover()
+    updateTimer = QTimer()
 
     def __init__(self, parent=None):
         QWidget.__init__(self, parent)
@@ -134,6 +179,9 @@ class MainWindow(QWidget):
 
         self.serverThread.start()
 
+        self.updateTimer.timeout.connect(self.on_update_timer)
+        self.updateTimer.start(1000)
+
     def on_change(self, s):
         data = json.loads(s)
         if 'servos' in data:
@@ -165,6 +213,8 @@ class MainWindow(QWidget):
         # self.scRover.setTransform(tx)
         # #self.roverIcon.move(data['location']['x'], data['location']['y'])
 
+    def on_update_timer(self):
+        self.rover.updateState()
 
 app = QApplication([])
 
