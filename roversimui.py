@@ -54,9 +54,9 @@ import math
 from time import time
 import json
 
-from PyQt6.QtCore import QThread, QObject, QTimer, pyqtSignal
-from PyQt6.QtWidgets import QApplication, QLabel, QWidget, QGraphicsScene, QGraphicsView
-from PyQt6.QtGui import QPixmap, QTransform
+from PyQt6.QtCore import QThread, QObject, QTimer, pyqtSignal, QRectF, Qt
+from PyQt6.QtWidgets import QApplication, QLabel, QWidget, QGraphicsScene, QGraphicsView,QGraphicsRectItem, QGraphicsItemGroup, QGraphicsPixmapItem
+from PyQt6.QtGui import QPixmap, QTransform, QColor, QPen, QBrush
 
 from flask import Flask, request
 
@@ -147,6 +147,18 @@ class MainWindow(QWidget):
     rover = Rover()
     updateTimer = QTimer()
 
+    # Visualized Rover parts
+
+    # This is the whole Rover. All the parts (wheel, head) are attached to
+    # this, and will move with it.
+    visRoverGroup = QGraphicsItemGroup()
+
+    # Rotatable wheels
+    visRoverWheelFL = QGraphicsItemGroup()
+    visRoverWheelFR = QGraphicsItemGroup()
+    visRoverWheelBL = QGraphicsItemGroup()
+    visRoverWheelBR = QGraphicsItemGroup()
+
     def __init__(self, parent=None):
         QWidget.__init__(self, parent)
 
@@ -156,15 +168,48 @@ class MainWindow(QWidget):
         self.helloMsg.move(60, 0)
 
         roverImage = QPixmap("rover.png")
-        tx = QTransform()
-        tx.rotate(20)
+        self.visRoverGroup.addToGroup(QGraphicsPixmapItem(roverImage))
+        body = QGraphicsRectItem(QRectF(-50, -50, 100, 100))
+        body.setPen(Qt.GlobalColor.black)
+        body.setBrush(Qt.GlobalColor.lightGray)
+        self.visRoverGroup.addToGroup(body)
+
+        # For each wheel, we create a QGraphicsItemGroup container that
+        # is at a fixed position relative to the rover. This does not
+        # rotate as the wheel rotates but it contains an object that does
+        # rotate, to visualize the wheel itself.
+
+        def makeWheel(front, left, wheelRotatingContainer):
+            wheelNonRotatingContainer = QGraphicsItemGroup(self.visRoverGroup)
+            x = -70 if left else 70
+            y = -50 if front else 50
+            wheel = QGraphicsRectItem(QRectF(-8, -12, 16, 24))
+            wheel.setPen(Qt.GlobalColor.lightGray)
+            wheel.setBrush(Qt.GlobalColor.black)
+            wheelRotatingContainer.addToGroup(wheel)
+
+            wheelNonRotatingContainer.addToGroup(wheelRotatingContainer)
+            wheelNonRotatingContainer.setTransform(QTransform.fromTranslate(x, y))
+            return wheelNonRotatingContainer
+        
+        makeWheel(True, True, self.visRoverWheelFL)
+        makeWheel(True, False, self.visRoverWheelFR)
+        makeWheel(False, True, self.visRoverWheelBL)
+        makeWheel(False, False, self.visRoverWheelBR)
+
+        # tx = QTransform()
+        # tx.rotate(90)
+        # self.visRoverGroup.setTransform(tx)
 
         scene = QGraphicsScene()
-        self.scRover = scene.addPixmap(roverImage)
-        self.scRover.setTransform(tx)
+        scene.setSceneRect(QRectF(-200, -200, 400, 400))
+        scene.addRect(QRectF(0, 0, 100, 100), QPen(QColor(255,0,0)), QBrush(QColor(255,255,0)))
+        #self.scRover = scene.addPixmap(roverImage)
+        scene.addItem(self.visRoverGroup)
+        #self.scRover.setTransform(tx)
         self.roverIcon = QGraphicsView(scene, parent=self)
         self.roverIcon.move(0, 120)
-        self.roverIcon.resize(400, 400)
+        self.roverIcon.resize(410, 410)
 
         # self.roverIcon = QLabel(parent=self)
         # self.roverIcon.setPixmap(roverImage.transformed(tx))
@@ -215,6 +260,11 @@ class MainWindow(QWidget):
 
     def on_update_timer(self):
         self.rover.updateState()
+        tx = QTransform();
+        tx.translate(self.rover.posX, self.rover.posY)
+        self.visRoverGroup.setTransform(tx)
+
+        self.visRoverWheelFL.setTransform(QTransform().rotate(self.rover.servos[15]))
 
 app = QApplication([])
 
