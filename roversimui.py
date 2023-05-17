@@ -20,7 +20,8 @@
 #   },
 #   "servos": {
 #     "0": 0,
-#     "15": -10
+#     "9": -10
+#     "10": -10  
 #   },
 #   "rgbLeds": {
 #     "0": [255, 0, 0],
@@ -59,6 +60,14 @@ from PyQt6.QtWidgets import QApplication, QLabel, QWidget, QGraphicsScene, QGrap
 from PyQt6.QtGui import QPixmap, QTransform, QColor, QPen, QBrush
 
 from flask import Flask, request
+
+# Servo assignments
+servo_FL = 9
+servo_FR = 15
+servo_RL = 11
+servo_RR = 13
+servo_MA = 0
+
 
 # Receives requests
 class ServerWorker(QObject):
@@ -109,6 +118,68 @@ class Rover:
         currentTime = time()
         timeSinceLastUpdate = currentTime - self.timeOfLastUpdate
         self.timeOfLastUpdate = currentTime
+
+        # Working out the direction and distance of travel is surprisingly
+        # complex, not least because there's no guarantee that all 4 steerable
+        # wheels are working together - they could be fighting one another.
+        # There are a few ways we could try to work it out:
+        #   1. an idealised model in which we presume the wheels cannot slip
+        #       sideways and work out the rotation and direction of travel
+        #   2. determine the resultant force and moment on the rover by
+        #       considering the forces from all 6 driven wheels.
+        #   3. work out where each wheel is trying to travel and by how much,
+        #       and then average these to work out the net motion and
+        #       separately calculate the rotation
+        # With 1, we can do this one steerable wheel at a time. If the
+        # steerable wheel is pointing dead ahead, then it won't be attempting
+        # to turn - it will just be trying to push forwards or backwards. But
+        # if it is not dead ahead, then it will be attempting to steer. The two
+        # fixed middle wheels constrain it to turn around a point somewhere
+        # along the imaginary line joining those two wheels together. We need
+        # to calculate the size of that turning circle, because from that, we
+        # can calculate the rate of turn for a given speed.
+        # We have the angle and also the length of the 'opposite' (the distance
+        # between the middle and front wheel), and we want the radius.
+        # r*sin(a) = opp, so r = opp/(sin(a))
+
+        def calculateSteerAngle(left, front, wheelAngleRelativeToVehicleDegrees, wheelSpeed, dt):
+            # The motor speed is just a number from 0 (not moving)
+            # to 100 (full speed). We need to convert that to an
+            # actual speed:
+            wheelSpeedCmPerSecond = wheelSpeed / 100.0 * fullSpeedCmPerSecond
+
+            if wheelAngleRelativeToVehicleDegrees == 0:
+                # We're moving in a straight line, so we just need to work
+                # out what that means given the way we're facing
+                headingInRadians = (self.headingInDegrees / 180.0) * math.pi
+
+                distanceMovedCmSinceLastUpdate = wheelSpeedCmPerSecond * dt 
+                xChangeCm = -distanceMovedCmSinceLastUpdate * math.sin(headingInRadians)
+                yChangeCm = distanceMovedCmSinceLastUpdate * math.cos(headingInRadians)
+                headingChangeDegrees = 0
+            else:
+                # Trying to steer, so work out the turning circle radius
+                distanceBetweenWheelsCm = 5 if front else -5
+                wheelAngleRelativeToVehicleRadians = (wheelAngleRelativeToVehicleDegrees / 180.0) * math.pi
+                radiusCm = distanceBetweenWheelsCm / math.sin(wheelAngleRelativeToVehicleRadians)
+
+                # Now work out the rate of turn, then the amount of turn given the time difference
+                diameterCm = 2*math.pi*radiusCm
+                revolutionsPerSecond = wheelSpeedCmPerSecond / diameterCm
+                revolutionsTurned = revolutionsPerSecond * dt
+                headingChangeDegrees = revolutionsTurned * 360
+                headingChangeRadians = revolutionsTurned * 2 * math.pi
+
+                # Now work out the turning circle centre.
+                # Start with the position of the wheel relative to the centre
+                # of the vehicle, in a coordinate system aligned with the vehicle
+                wheelXRelativeToVehicle = -5 if left else 5
+                wheelYRelativeToVehicle = 5 if front else -5
+                turningCentreX = 
+                
+
+
+
 
         # This is a bit too basic. We need to take into
         # account wheel servo orientation to work out how
@@ -264,7 +335,10 @@ class MainWindow(QWidget):
         tx.translate(self.rover.posX, self.rover.posY)
         self.visRoverGroup.setTransform(tx)
 
-        self.visRoverWheelFL.setTransform(QTransform().rotate(self.rover.servos[15]))
+        self.visRoverWheelFL.setTransform(QTransform().rotate(self.rover.servos[servo_FL]))
+        self.visRoverWheelFR.setTransform(QTransform().rotate(self.rover.servos[servo_FR]))
+        self.visRoverWheelBL.setTransform(QTransform().rotate(self.rover.servos[servo_RL]))
+        self.visRoverWheelBR.setTransform(QTransform().rotate(self.rover.servos[servo_RR]))
 
 app = QApplication([])
 
