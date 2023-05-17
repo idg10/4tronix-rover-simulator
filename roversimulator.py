@@ -346,38 +346,38 @@ def stepSpinR(speed, counts):
 #
 # irLeft(): Returns state of Left IR Obstacle sensor
 def irLeft():
-    if GPIO.input(irFL)==0:
+    # if GPIO.input(irFL)==0:
         return True
-    else:
-        return False
+    # else:
+    #     return False
 
 # irRight(): Returns state of Right IR Obstacle sensor
 def irRight():
-    if GPIO.input(irFR)==0:
+    # if GPIO.input(irFR)==0:
         return True
-    else:
-        return False
+    # else:
+    #     return False
 
 # irAll(): Returns true if either of the Obstacle sensors are triggered
 def irAll():
-    if GPIO.input(irFL)==0 or GPIO.input(irFR)==0:
+    # if GPIO.input(irFL)==0 or GPIO.input(irFR)==0:
         return True
-    else:
-        return False
+    # else:
+    #     return False
 
 # irLeftLine(): Returns state of Left IR Line sensor
 def irLeftLine():
-    if GPIO.input(lineLeft)==0:
+    # if GPIO.input(lineLeft)==0:
         return True
-    else:
-        return False
+    # else:
+    #     return False
 
 # irRightLine(): Returns state of Right IR Line sensor
 def irRightLine():
-    if GPIO.input(lineRight)==0:
+    # if GPIO.input(lineRight)==0:
         return True
-    else:
-        return False
+    # else:
+    #     return False
 
 # End of IR Sensor Functions
 #======================================================================
