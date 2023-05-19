@@ -88,11 +88,12 @@ fullSpeedCmPerSecond = 10
 
 class Rover:
     vehicleWidthCm = 16
+    vehicleHeightCm = 18
     distanceBetweenWheelPairsCm = 8
     timeOfLastUpdate = time()
-    posX = 0
-    posY = 0
-    headingInDegrees = 0
+    vehicleXcm = 0
+    vehicleYcm = 0
+    vehicleHeadingDegrees = 0
     speedL = 0
     speedR = 0
     servos = [0] * 16
@@ -153,20 +154,20 @@ class Rover:
             if wheelAngleRelativeToVehicleDegrees == 0:
                 # We're moving in a straight line, so we just need to work
                 # out what that means given the way we're facing
-                headingInRadians = (self.headingInDegrees / 180.0) * math.pi
+                headingInRadians = (self.vehicleHeadingDegrees / 180.0) * math.pi
 
                 distanceMovedCmSinceLastUpdate = wheelSpeedCmPerSecond * dt 
                 xChangeCm = -distanceMovedCmSinceLastUpdate * math.sin(headingInRadians)
                 yChangeCm = distanceMovedCmSinceLastUpdate * math.cos(headingInRadians)
                 headingChangeDegrees = 0
 
-                updatedVehicleX = self.posX + xChangeCm
-                updatedVehicleY = self.posX + yChangeCm
+                updatedVehicleX = self.vehicleXcm + xChangeCm
+                updatedVehicleY = self.vehicleYcm + yChangeCm
             else:
                 # Trying to steer
                 wheelDistanceFromCentreX = self.vehicleWidthCm / 2
                 steerablePosRelativeToRoverX = -wheelDistanceFromCentreX if left else wheelDistanceFromCentreX
-                steerablePosRelativeToRoverY = self.distanceBetweenWheelPairsCm if front else distanceBetweenWheelPairsCm
+                steerablePosRelativeToRoverY = self.distanceBetweenWheelPairsCm if front else self.distanceBetweenWheelPairsCm
                 distanceBetweenWheelsCm = steerablePosRelativeToRoverY
 
                 wheelAngleRelativeToVehicleRadians = (wheelAngleRelativeToVehicleDegrees / 180.0) * math.pi
@@ -174,60 +175,68 @@ class Rover:
                 circumferenceCm = 2*math.pi*turningRadiusToSteerableWheelCm
 
                 # Now work out the rate of turn, then the amount of turn given the time difference
-                revolutionsPerSecond = wheelSpeedCmPerSecond / -circumferenceCm
+                revolutionsPerSecond = wheelSpeedCmPerSecond / circumferenceCm
                 revolutionsTurned = revolutionsPerSecond * dt
                 headingChangeDegrees = revolutionsTurned * 360
                 headingChangeRadians = revolutionsTurned * 2 * math.pi
 
                 # Now work out the turning circle centre.
-                turningCircleCentreDistanceFromVehicleCentre = math.cos(wheelAngleRelativeToVehicleRadians) * turningRadiusToSteerableWheelCm + steerablePosRelativeToRoverX
+                turningCircleCentreDistanceFromVehicleCentre = math.cos(wheelAngleRelativeToVehicleRadians) * turningRadiusToSteerableWheelCm - steerablePosRelativeToRoverX
                 vehicleHeadingRadians = math.radians(self.vehicleHeadingDegrees)
                 turningCircleRelativeToVehicleX = turningCircleCentreDistanceFromVehicleCentre * math.cos(vehicleHeadingRadians)
                 turningCircleRelativeToVehicleY = turningCircleCentreDistanceFromVehicleCentre * math.sin(vehicleHeadingRadians)
                 turningCircleX = turningCircleRelativeToVehicleX + self.vehicleXcm
                 turningCircleY = turningCircleRelativeToVehicleY + self.vehicleYcm
+
+                print("Turning circle centre: " + str([int(turningCircleX),int(turningCircleY)]))
                 
 
                 # Work out where vehicle will go as it moves around the turning circle
                 currentAngleOnTurningCircleRadians = math.atan2(self.vehicleYcm - turningCircleY, self.vehicleXcm - turningCircleX)
-                updatedAngleOnTurningCircleRadians = currentAngleOnTurningCircleRadians + headingChangeRadians
-                updatedVehicleX = turningCircleX - turningCircleCentreDistanceFromVehicleCentre * math.cos(updatedAngleOnTurningCircleRadians)
-                updatedVehicleY = turningCircleY - turningCircleCentreDistanceFromVehicleCentre * math.sin(updatedAngleOnTurningCircleRadians)
+                updatedAngleOnTurningCircleRadians = currentAngleOnTurningCircleRadians - headingChangeRadians
+                updatedVehicleX = turningCircleX + abs(turningCircleCentreDistanceFromVehicleCentre) * math.cos(updatedAngleOnTurningCircleRadians)
+                updatedVehicleY = turningCircleY + abs(turningCircleCentreDistanceFromVehicleCentre) * math.sin(updatedAngleOnTurningCircleRadians)
 
-            return [updatedVehicleX, updatedVehicleY, self.headingInDegrees + headingChangeDegrees]
+            return [updatedVehicleX, updatedVehicleY, self.vehicleHeadingDegrees + headingChangeDegrees]
 
-        [updatedXFL, updatedYFL] = calculateSteeredPosition(True, True, self.servos[servo_FL], self.speedL, timeSinceLastUpdate)
-        # This is a bit too basic. We need to take into
-        # account wheel servo orientation to work out how
-        # much each side moves, and in which direction,
-        # and to deduce the rotation of the rover from that.
-        # But it will do for now.
-        averageSpeed = (self.speedL + self.speedR) / 2
+        [updatedXFL, updatedYFL, updatedHeadingFL] = calculateSteeredPosition(True, True, self.servos[servo_FL], self.speedL, timeSinceLastUpdate)
 
-        # The motor speed is just a number from 0 (not moving)
-        # to 100 (full speed). We need to convert that to an
-        # actual speed:
-        averageSpeedCmPerSecond = averageSpeed / 100.0 * fullSpeedCmPerSecond
+        self.vehicleXcm = updatedXFL
+        self.vehicleYcm = updatedYFL
+        self.vehicleHeadingDegrees = updatedHeadingFL
 
-        # The program probably won't manage to update at exactly the
-        # same interval - when the computer's busy or running slowly for
-        # some reason, there might be longer gaps between updates. So we
-        # need to work out how far the rover will have travelled based
-        # not just on its speed, but also on how long it has been since the
-        # last update.
-        distanceMovedCmSinceLastUpdate = averageSpeedCmPerSecond * timeSinceLastUpdate 
+        # # This is a bit too basic. We need to take into
+        # # account wheel servo orientation to work out how
+        # # much each side moves, and in which direction,
+        # # and to deduce the rotation of the rover from that.
+        # # But it will do for now.
+        # averageSpeed = (self.speedL + self.speedR) / 2
+
+        # # The motor speed is just a number from 0 (not moving)
+        # # to 100 (full speed). We need to convert that to an
+        # # actual speed:
+        # averageSpeedCmPerSecond = averageSpeed / 100.0 * fullSpeedCmPerSecond
+
+        # # The program probably won't manage to update at exactly the
+        # # same interval - when the computer's busy or running slowly for
+        # # some reason, there might be longer gaps between updates. So we
+        # # need to work out how far the rover will have travelled based
+        # # not just on its speed, but also on how long it has been since the
+        # # last update.
+        # distanceMovedCmSinceLastUpdate = averageSpeedCmPerSecond * timeSinceLastUpdate 
         
-        # Of course, the rover probably isn't heading exactly up/down/left/right,
-        # so we can't just add the distance moved to posX or posY. We need to
-        # work out how to split the distance between those two directions based on
-        # the direction the rover is pointing. For this, we use trigonometry! Yay!
-        # First, computers always want things in Radians, not Degrees, because reasons
-        headingInRadians = (self.headingInDegrees / 180) * math.pi
-        xChangeCm = -distanceMovedCmSinceLastUpdate * math.sin(headingInRadians)
-        yChangeCm = distanceMovedCmSinceLastUpdate * math.cos(headingInRadians)
-        self.posX += xChangeCm
-        self.posY += yChangeCm
-        print("X,Y: " + str(self.posX) + ", " + str(self.posY))
+        # # Of course, the rover probably isn't heading exactly up/down/left/right,
+        # # so we can't just add the distance moved to vehicleXcm or vehicleYcm. We need to
+        # # work out how to split the distance between those two directions based on
+        # # the direction the rover is pointing. For this, we use trigonometry! Yay!
+        # # First, computers always want things in Radians, not Degrees, because reasons
+        # headingInRadians = (self.vehicleHeadingDegrees / 180) * math.pi
+        # xChangeCm = -distanceMovedCmSinceLastUpdate * math.sin(headingInRadians)
+        # yChangeCm = distanceMovedCmSinceLastUpdate * math.cos(headingInRadians)
+        # self.vehicleXcm += xChangeCm
+        # self.vehicleYcm += yChangeCm
+        print("X,Y: " + str(self.vehicleXcm) + ", " + str(self.vehicleYcm))
+        print("Heading: " + str(self.vehicleHeadingDegrees))
 
 
 class MainWindow(QWidget):
@@ -254,9 +263,11 @@ class MainWindow(QWidget):
         self.helloMsg = QLabel("<h1>Hello, World!</h1>", parent=self)
         self.helloMsg.move(60, 0)
 
-        roverImage = QPixmap("rover.png")
-        self.visRoverGroup.addToGroup(QGraphicsPixmapItem(roverImage))
-        body = QGraphicsRectItem(QRectF(-50, -50, 100, 100))
+        # roverImage = QPixmap("rover.png")
+        # self.visRoverGroup.addToGroup(QGraphicsPixmapItem(roverImage))
+        vw = self.rover.vehicleWidthCm
+        vh = self.rover.vehicleHeightCm
+        body = QGraphicsRectItem(QRectF(-vw/2, -vh/2, vw, vh))
         body.setPen(Qt.GlobalColor.black)
         body.setBrush(Qt.GlobalColor.lightGray)
         self.visRoverGroup.addToGroup(body)
@@ -268,9 +279,11 @@ class MainWindow(QWidget):
 
         def makeWheel(front, left, wheelRotatingContainer):
             wheelNonRotatingContainer = QGraphicsItemGroup(self.visRoverGroup)
-            x = -70 if left else 70
-            y = -50 if front else 50
-            wheel = QGraphicsRectItem(QRectF(-8, -12, 16, 24))
+            wx = vw/2 + 5
+            wy = vh/2 - 2
+            x = -wx if left else wx
+            y = -wy if front else wy
+            wheel = QGraphicsRectItem(QRectF(-2, -4, 4, 8))
             wheel.setPen(Qt.GlobalColor.lightGray)
             wheel.setBrush(Qt.GlobalColor.black)
             wheelRotatingContainer.addToGroup(wheel)
@@ -347,8 +360,12 @@ class MainWindow(QWidget):
 
     def on_update_timer(self):
         self.rover.updateState()
-        tx = QTransform();
-        tx.translate(self.rover.posX, self.rover.posY)
+        tx = QTransform()
+        # Negating Y because we're using the mathematical convention that increasing Y
+        # values go higher up the page, but the drawing system we're using has increasing
+        # Y values go down the screen.
+        tx.translate(self.rover.vehicleXcm, -self.rover.vehicleYcm)
+        tx.rotate(self.rover.vehicleHeadingDegrees)
         self.visRoverGroup.setTransform(tx)
 
         self.visRoverWheelFL.setTransform(QTransform().rotate(self.rover.servos[servo_FL]))
