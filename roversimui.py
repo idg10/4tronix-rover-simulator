@@ -87,6 +87,8 @@ class ServerWorker(QObject):
 fullSpeedCmPerSecond = 10
 
 class Rover:
+    vehicleWidthCm = 16
+    distanceBetweenWheelPairsCm = 8
     timeOfLastUpdate = time()
     posX = 0
     posY = 0
@@ -142,7 +144,7 @@ class Rover:
         # between the middle and front wheel), and we want the radius.
         # r*sin(a) = opp, so r = opp/(sin(a))
 
-        def calculateSteerAngle(left, front, wheelAngleRelativeToVehicleDegrees, wheelSpeed, dt):
+        def calculateSteeredPosition(left, front, wheelAngleRelativeToVehicleDegrees, wheelSpeed, dt):
             # The motor speed is just a number from 0 (not moving)
             # to 100 (full speed). We need to convert that to an
             # actual speed:
@@ -157,30 +159,44 @@ class Rover:
                 xChangeCm = -distanceMovedCmSinceLastUpdate * math.sin(headingInRadians)
                 yChangeCm = distanceMovedCmSinceLastUpdate * math.cos(headingInRadians)
                 headingChangeDegrees = 0
+
+                updatedVehicleX = self.posX + xChangeCm
+                updatedVehicleY = self.posX + yChangeCm
             else:
-                # Trying to steer, so work out the turning circle radius
-                distanceBetweenWheelsCm = 5 if front else -5
+                # Trying to steer
+                wheelDistanceFromCentreX = self.vehicleWidthCm / 2
+                steerablePosRelativeToRoverX = -wheelDistanceFromCentreX if left else wheelDistanceFromCentreX
+                steerablePosRelativeToRoverY = self.distanceBetweenWheelPairsCm if front else distanceBetweenWheelPairsCm
+                distanceBetweenWheelsCm = steerablePosRelativeToRoverY
+
                 wheelAngleRelativeToVehicleRadians = (wheelAngleRelativeToVehicleDegrees / 180.0) * math.pi
-                radiusCm = distanceBetweenWheelsCm / math.sin(wheelAngleRelativeToVehicleRadians)
+                turningRadiusToSteerableWheelCm = distanceBetweenWheelsCm / math.sin(wheelAngleRelativeToVehicleRadians)
+                circumferenceCm = 2*math.pi*turningRadiusToSteerableWheelCm
 
                 # Now work out the rate of turn, then the amount of turn given the time difference
-                diameterCm = 2*math.pi*radiusCm
-                revolutionsPerSecond = wheelSpeedCmPerSecond / diameterCm
+                revolutionsPerSecond = wheelSpeedCmPerSecond / -circumferenceCm
                 revolutionsTurned = revolutionsPerSecond * dt
                 headingChangeDegrees = revolutionsTurned * 360
                 headingChangeRadians = revolutionsTurned * 2 * math.pi
 
                 # Now work out the turning circle centre.
-                # Start with the position of the wheel relative to the centre
-                # of the vehicle, in a coordinate system aligned with the vehicle
-                wheelXRelativeToVehicle = -5 if left else 5
-                wheelYRelativeToVehicle = 5 if front else -5
-                turningCentreX = 
+                turningCircleCentreDistanceFromVehicleCentre = math.cos(wheelAngleRelativeToVehicleRadians) * turningRadiusToSteerableWheelCm + steerablePosRelativeToRoverX
+                vehicleHeadingRadians = math.radians(self.vehicleHeadingDegrees)
+                turningCircleRelativeToVehicleX = turningCircleCentreDistanceFromVehicleCentre * math.cos(vehicleHeadingRadians)
+                turningCircleRelativeToVehicleY = turningCircleCentreDistanceFromVehicleCentre * math.sin(vehicleHeadingRadians)
+                turningCircleX = turningCircleRelativeToVehicleX + self.vehicleXcm
+                turningCircleY = turningCircleRelativeToVehicleY + self.vehicleYcm
                 
 
+                # Work out where vehicle will go as it moves around the turning circle
+                currentAngleOnTurningCircleRadians = math.atan2(self.vehicleYcm - turningCircleY, self.vehicleXcm - turningCircleX)
+                updatedAngleOnTurningCircleRadians = currentAngleOnTurningCircleRadians + headingChangeRadians
+                updatedVehicleX = turningCircleX - turningCircleCentreDistanceFromVehicleCentre * math.cos(updatedAngleOnTurningCircleRadians)
+                updatedVehicleY = turningCircleY - turningCircleCentreDistanceFromVehicleCentre * math.sin(updatedAngleOnTurningCircleRadians)
 
+            return [updatedVehicleX, updatedVehicleY, self.headingInDegrees + headingChangeDegrees]
 
-
+        [updatedXFL, updatedYFL] = calculateSteeredPosition(True, True, self.servos[servo_FL], self.speedL, timeSinceLastUpdate)
         # This is a bit too basic. We need to take into
         # account wheel servo orientation to work out how
         # much each side moves, and in which direction,
