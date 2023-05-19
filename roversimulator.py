@@ -72,42 +72,9 @@
 
 import sys
 from time import sleep, time
+import requests
 
-# Using PyQt to be able to open a Window
-
-from PyQt6.QtCore import QObject, QThread, pyqtSignal
-from PyQt6.QtWidgets import QApplication, QLabel, QWidget
-
-class UiThread(QObject):
-    thread = QThread()
-
-    finished = pyqtSignal()
-    #progress = pyqtSignal(int)
-
-    def uiloop(self):
-        """Running UI thread."""
-
-        self.app.exec()
-
-        self.finished.emit()
-
-
-class Ui():
-    app = QApplication([])
-    window = None
-
-    def show(self):
-        self.window = QWidget()
-        self.window.setWindowTitle("M.A.R.S. Rover")
-        self.window.setGeometry(100, 100, 280, 80)
-        helloMsg = QLabel("<h1>Hello, World!</h1>", parent=self.window)
-        helloMsg.move(60, 15)
-        self.window.show()
-
-    def processEvents(self):
-        self.app.processEvents()
-
-ui = None
+simulatorUiUrl = "http://localhost:8523/"
 
 
 # Define RGB LEDs
@@ -127,10 +94,6 @@ def init(brightness, PiBit=False):
         #leds = Adafruit_NeoPixel(numPixels, 18, 800000, 5, False, _brightness)
         #leds.begin()
 
-    if (ui == None):
-        ui = Ui()
-        ui.run()
-
 
     print("Initialized")
 
@@ -142,7 +105,7 @@ def cleanup():
     if (leds != None):
         clear()
         show()
-    time.sleep(0.1)
+    #time.sleep(0.1)
     # GPIO.cleanup()
 
 # End of General Functions
@@ -160,6 +123,8 @@ def stop():
     # b.ChangeDutyCycle(0)
     lDir = 0
     rDir = 0
+    message = { 'wheelMotors': { 'l': 0, 'r': 0 }}
+    requests.post(simulatorUiUrl, json=message)
 
 # brake(): Stops both motors - regenrative braking to stop quickly
 def brake():
@@ -170,6 +135,8 @@ def brake():
     # b.ChangeDutyCycle(100)
     lDir = 0
     rDir = 0
+    message = { 'wheelMotors': { 'l': [0, 0], 'r': [0, 0] }}
+    requests.post(simulatorUiUrl, json=message)
 
 # forward(speed): Sets both motors to move forward at speed. 0 <= speed <= 100
 def forward(speed):
@@ -185,6 +152,8 @@ def forward(speed):
     # a.ChangeFrequency(max(speed/2, 10))
     lDir = 1
     rDir = 1
+    message = { 'wheelMotors': { 'l': [speed, 0], 'r': [speed, 0] }}
+    requests.post(simulatorUiUrl, json=message)
 
 # reverse(speed): Sets both motors to reverse at speed. 0 <= speed <= 100
 def reverse(speed):
@@ -200,6 +169,8 @@ def reverse(speed):
     # b.ChangeFrequency(max(speed/2, 10))
     lDir = -1
     rDir = -1
+    message = { 'wheelMotors': { 'l': [0, speed], 'r': [0, speed] }}
+    requests.post(simulatorUiUrl, json=message)
 
 # spinLeft(speed): Sets motors to turn opposite directions at speed. 0 <= speed <= 100
 def spinLeft(speed):
@@ -215,6 +186,8 @@ def spinLeft(speed):
     # a.ChangeFrequency(min(speed+5, 20))
     lDir = -1
     rDir = 1
+    message = { 'wheelMotors': { 'l': [0, speed], 'r': [speed, 0] }}
+    requests.post(simulatorUiUrl, json=message)
 
 # spinRight(speed): Sets motors to turn opposite directions at speed. 0 <= speed <= 100
 def spinRight(speed):
@@ -230,6 +203,8 @@ def spinRight(speed):
     # b.ChangeFrequency(min(speed+5, 20))
     lDir = 1
     rDir = -1
+    message = { 'wheelMotors': { 'l': [speed, 0], 'r': [0, speed] }}
+    requests.post(simulatorUiUrl, json=message)
 
 
 # turnForward(leftSpeed, rightSpeed): Moves forwards in an arc by setting different speeds. 0 <= leftSpeed,rightSpeed <= 100
@@ -238,14 +213,16 @@ def turnForward(leftSpeed, rightSpeed):
     if (lDir == -1 or rDir == -1):
         brake()
         time.sleep(0.2)
-    p.ChangeDutyCycle(leftSpeed)
-    q.ChangeDutyCycle(0)
-    a.ChangeDutyCycle(rightSpeed)
-    b.ChangeDutyCycle(0)
-    p.ChangeFrequency(min(leftSpeed+5, 20))
-    a.ChangeFrequency(min(rightSpeed+5, 20))
+    # p.ChangeDutyCycle(leftSpeed)
+    # q.ChangeDutyCycle(0)
+    # a.ChangeDutyCycle(rightSpeed)
+    # b.ChangeDutyCycle(0)
+    # p.ChangeFrequency(min(leftSpeed+5, 20))
+    # a.ChangeFrequency(min(rightSpeed+5, 20))
     lDir = 1
     rDir = 1
+    message = { 'wheelMotors': { 'l': [leftSpeed, 0], 'r': [rightSpeed, 0] }}
+    requests.post(simulatorUiUrl, json=message)
 
 # turnReverse(leftSpeed, rightSpeed): Moves backwards in an arc by setting different speeds. 0 <= leftSpeed,rightSpeed <= 100
 def turnReverse(leftSpeed, rightSpeed):
@@ -253,14 +230,16 @@ def turnReverse(leftSpeed, rightSpeed):
     if (lDir == 1 or rDir == 1):
         brake()
         time.sleep(0.2)
-    p.ChangeDutyCycle(0)
-    q.ChangeDutyCycle(leftSpeed)
-    a.ChangeDutyCycle(0)
-    b.ChangeDutyCycle(rightSpeed)
-    q.ChangeFrequency(min(leftSpeed+5, 20))
-    b.ChangeFrequency(min(rightSpeed+5, 20))
+    # p.ChangeDutyCycle(0)
+    # q.ChangeDutyCycle(leftSpeed)
+    # a.ChangeDutyCycle(0)
+    # b.ChangeDutyCycle(rightSpeed)
+    # q.ChangeFrequency(min(leftSpeed+5, 20))
+    # b.ChangeFrequency(min(rightSpeed+5, 20))
     lDir = -1
     rDir = -1
+    message = { 'wheelMotors': { 'l': [0, leftSpeed], 'r': [0, rightSpeed] }}
+    requests.post(simulatorUiUrl, json=message)
 
 # End of Motor Functions
 #======================================================================
@@ -462,7 +441,8 @@ def wheel(pos):
 # Servo Functions
 
 def setServo(Servo, Degrees):
-    pca9685.setServo(Servo, Degrees + offsets[Servo])
+    message = { 'servos': { Servo: Degrees }}
+    requests.post(simulatorUiUrl, json=message)
 
 def stopServos():
     for i in range(16):
