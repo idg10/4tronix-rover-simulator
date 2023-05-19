@@ -157,7 +157,7 @@ class Rover:
                 headingInRadians = (self.vehicleHeadingDegrees / 180.0) * math.pi
 
                 distanceMovedCmSinceLastUpdate = wheelSpeedCmPerSecond * dt 
-                xChangeCm = -distanceMovedCmSinceLastUpdate * math.sin(headingInRadians)
+                xChangeCm = distanceMovedCmSinceLastUpdate * math.sin(headingInRadians)
                 yChangeCm = distanceMovedCmSinceLastUpdate * math.cos(headingInRadians)
                 headingChangeDegrees = 0
 
@@ -183,8 +183,8 @@ class Rover:
                 # Now work out the turning circle centre.
                 turningCircleCentreDistanceFromVehicleCentre = math.cos(wheelAngleRelativeToVehicleRadians) * turningRadiusToSteerableWheelCm - steerablePosRelativeToRoverX
                 vehicleHeadingRadians = math.radians(self.vehicleHeadingDegrees)
-                turningCircleRelativeToVehicleX = turningCircleCentreDistanceFromVehicleCentre * math.cos(vehicleHeadingRadians)
-                turningCircleRelativeToVehicleY = turningCircleCentreDistanceFromVehicleCentre * math.sin(vehicleHeadingRadians)
+                turningCircleRelativeToVehicleX = turningCircleCentreDistanceFromVehicleCentre * math.cos(-vehicleHeadingRadians)
+                turningCircleRelativeToVehicleY = turningCircleCentreDistanceFromVehicleCentre * math.sin(-vehicleHeadingRadians)
                 turningCircleX = turningCircleRelativeToVehicleX + self.vehicleXcm
                 turningCircleY = turningCircleRelativeToVehicleY + self.vehicleYcm
 
@@ -199,11 +199,21 @@ class Rover:
 
             return [updatedVehicleX, updatedVehicleY, self.vehicleHeadingDegrees + headingChangeDegrees]
 
+        # We'll work out where each steerable wheel is attempting to push the rover.
+        # Ideally they'll all be working together. But if they aren't, we'll just
+        # use the average.
         [updatedXFL, updatedYFL, updatedHeadingFL] = calculateSteeredPosition(True, True, self.servos[servo_FL], self.speedL, timeSinceLastUpdate)
+        [updatedXFR, updatedYFR, updatedHeadingFR] = calculateSteeredPosition(False, True, self.servos[servo_FL], self.speedL, timeSinceLastUpdate)
+        [updatedXBL, updatedYBL, updatedHeadingBL] = calculateSteeredPosition(True, False, self.servos[servo_FL], self.speedL, timeSinceLastUpdate)
+        [updatedXBR, updatedYBR, updatedHeadingBR] = calculateSteeredPosition(False, False, self.servos[servo_FL], self.speedL, timeSinceLastUpdate)
 
-        self.vehicleXcm = updatedXFL
-        self.vehicleYcm = updatedYFL
-        self.vehicleHeadingDegrees = updatedHeadingFL
+        updatedXAverage = (updatedXFL + updatedXFR + updatedXBL + updatedXBR) / 4
+        updatedYAverage = (updatedYFL + updatedYFR + updatedYBL + updatedYBR) / 4
+        updatedHeadingAverage = (updatedHeadingFL + updatedHeadingFR + updatedHeadingBL + updatedHeadingBR) / 4
+
+        self.vehicleXcm = updatedXAverage
+        self.vehicleYcm = updatedYAverage
+        self.vehicleHeadingDegrees = updatedHeadingAverage
 
         # # This is a bit too basic. We need to take into
         # # account wheel servo orientation to work out how
@@ -325,7 +335,7 @@ class MainWindow(QWidget):
         self.serverThread.start()
 
         self.updateTimer.timeout.connect(self.on_update_timer)
-        self.updateTimer.start(1000)
+        self.updateTimer.start(100)
 
     def on_change(self, s):
         data = json.loads(s)
