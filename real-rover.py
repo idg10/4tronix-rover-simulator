@@ -1,13 +1,16 @@
 #!/usr/bin/python
 #
-# roversimulator.py
+# rover.py
 #
-# Enables development of code designed to run on the 4tronix M.A.R.S. Rover
-# without needing to be connected to the actual Rover.
+# Python Module to support 4tronix M.A.R.S. Rover
 #
-# This provides the same API as the real rover.py at
-#   http://4tronix.co.uk/rover/rover.py
+# Copyright 4tronix
 #
+# This code is in the public domain and may be freely copied and used
+# No warranty is provided or implied
+#
+#======================================================================
+
 
 #======================================================================
 # General Functions
@@ -17,6 +20,7 @@
 # cleanup(). Sets all motors and LEDs off and sets GPIO to standard values
 # version(). Returns 4 for M.A.R.S. Rover. Invalid until after init() has been called
 #======================================================================
+
 
 #======================================================================
 # Motor Functions
@@ -70,39 +74,101 @@
 # getSwitch(). Returns the value of the tact switch: True==pressed
 #======================================================================
 
-import sys
-from time import sleep, time
-import requests
 
-simulatorUiUrl = "http://127.0.0.1:8523/"
-# A session means that after the first connection, we should remain
-# connected to the simulator UI so it shouldn't be so slow
-requestSession = requests.Session()
+# Import all necessary libraries
+import RPi.GPIO as GPIO, sys, time, os
+from rpi_ws281x import *
+import pca9685
+import smbus
 
+# Define Model
+PGNone = 0
+PGFull = 1
+PGLite = 2
+PG2 = 3
+ROVER = 4
+PGType = PGNone # Set to None until we confirm during init()
+
+# Pins 26, 19 Left Motor
+# Pins 36, 40 Right Motor
+# If using PiBit, then L1 and L2 are swapped
+L1 = 16
+L2 = 19
+R1 = 12
+R2 = 13
+# Variables to track movements to prevent sudden forward/reverse current surges. -1 reverse, 0 stop, +1 forward
+lDir = 0
+rDir = 0
 
 # Define RGB LEDs
 leds = None
 _brightness = 40
 numPixels = 4
 
-lDir = 0
-rDir = 0
+# Define Sonar Pin (same pin for both Ping and Echo)
+sonar = 23    # mast sonar
 
+# Pins used for keypad
+keypadOut = 5
+keypadIn = 25
+
+# EEROM
+EEROM = 0x50
+bus = smbus.SMBus(1)
+offsets = [0]*16
 
 #======================================================================
 # General Functions
 #
 # init(). Initialises GPIO pins, switches motors and LEDs Off, etc
 def init(brightness, PiBit=False):
-    global ui
-   # Initialise LEDs
+    global p, q, a, b, pwm, pcfADC, PGType
+    global irFL, irFR, irMID, lineLeft, lineRight
+    global leds, L1, L2
+
+    GPIO.setwarnings(False)
+
+    PGType = PG2
+
+    #use physical pin numbering
+    GPIO.setmode(GPIO.BCM)
+    
+    # Initialise LEDs
     if (leds == None and brightness>0):
         _brightness = brightness
-        #leds = Adafruit_NeoPixel(numPixels, 18, 800000, 5, False, _brightness)
-        #leds.begin()
+        leds = Adafruit_NeoPixel(numPixels, 18, 800000, 5, False, _brightness)
+        leds.begin()
 
+    pca9685.init()
 
-    print("Initialized")
+    if PiBit:
+        t = L1
+        L1 = L2
+        L2 = t
+
+    #use pwm for motor outputs
+    GPIO.setup(L1, GPIO.OUT)
+    p = GPIO.PWM(L1, 20)
+    p.start(0)
+
+    GPIO.setup(L2, GPIO.OUT)
+    q = GPIO.PWM(L2, 20)
+    q.start(0)
+
+    GPIO.setup(R1, GPIO.OUT)
+    a = GPIO.PWM(R1, 20)
+    a.start(0)
+
+    GPIO.setup(R2, GPIO.OUT)
+    b = GPIO.PWM(R2, 20)
+    b.start(0)
+
+    # set Keypad Clock as an Output and Data as an input
+    GPIO.setup(keypadOut, GPIO.OUT)
+    GPIO.setup(keypadIn, GPIO.IN)
+
+    loadOffsets()
+
 
 # cleanup(). Sets all motors and LEDs off and sets GPIO to standard values
 def cleanup():
@@ -112,11 +178,17 @@ def cleanup():
     if (leds != None):
         clear()
         show()
-    #sleep(0.1)
-    # GPIO.cleanup()
+    time.sleep(0.1)
+    GPIO.cleanup()
+
+
+# version(). Returns 3 for Pi2Go2. Invalid until after init() has been called
+def version():
+    return PGType
 
 # End of General Functions
 #======================================================================
+
 
 #======================================================================
 # Motor Functions
@@ -124,129 +196,112 @@ def cleanup():
 # stop(): Stops both motors - coasts slowly to a stop
 def stop():
     global lDir, rDir
-    # p.ChangeDutyCycle(0)
-    # q.ChangeDutyCycle(0)
-    # a.ChangeDutyCycle(0)
-    # b.ChangeDutyCycle(0)
+    p.ChangeDutyCycle(0)
+    q.ChangeDutyCycle(0)
+    a.ChangeDutyCycle(0)
+    b.ChangeDutyCycle(0)
     lDir = 0
     rDir = 0
-    message = { 'wheelMotors': { 'l': [0,0], 'r': [0,0] }}
-    requestSession.post(simulatorUiUrl, json=message)
 
 # brake(): Stops both motors - regenrative braking to stop quickly
 def brake():
     global lDir, rDir
-    # p.ChangeDutyCycle(100)
-    # q.ChangeDutyCycle(100)
-    # a.ChangeDutyCycle(100)
-    # b.ChangeDutyCycle(100)
+    p.ChangeDutyCycle(100)
+    q.ChangeDutyCycle(100)
+    a.ChangeDutyCycle(100)
+    b.ChangeDutyCycle(100)
     lDir = 0
     rDir = 0
-    message = { 'wheelMotors': { 'l': [0, 0], 'r': [0, 0] }}
-    requestSession.post(simulatorUiUrl, json=message)
 
 # forward(speed): Sets both motors to move forward at speed. 0 <= speed <= 100
 def forward(speed):
     global lDir, rDir
     if (lDir == -1 or rDir == -1):
         brake()
-        sleep(0.2)
-    # p.ChangeDutyCycle(speed)
-    # q.ChangeDutyCycle(0)
-    # a.ChangeDutyCycle(speed)
-    # b.ChangeDutyCycle(0)
-    # p.ChangeFrequency(max(speed/2, 10))
-    # a.ChangeFrequency(max(speed/2, 10))
+        time.sleep(0.2)
+    p.ChangeDutyCycle(speed)
+    q.ChangeDutyCycle(0)
+    a.ChangeDutyCycle(speed)
+    b.ChangeDutyCycle(0)
+    p.ChangeFrequency(max(speed/2, 10))
+    a.ChangeFrequency(max(speed/2, 10))
     lDir = 1
     rDir = 1
-    message = { 'wheelMotors': { 'l': [speed, 0], 'r': [speed, 0] }}
-    requestSession.post(simulatorUiUrl, json=message)
 
 # reverse(speed): Sets both motors to reverse at speed. 0 <= speed <= 100
 def reverse(speed):
     global lDir, rDir
     if (lDir == 1 or rDir == 1):
         brake()
-        sleep(0.2)
-    # p.ChangeDutyCycle(0)
-    # q.ChangeDutyCycle(speed)
-    # a.ChangeDutyCycle(0)
-    # b.ChangeDutyCycle(speed)
-    # q.ChangeFrequency(max(speed/2, 10))
-    # b.ChangeFrequency(max(speed/2, 10))
+        time.sleep(0.2)
+    p.ChangeDutyCycle(0)
+    q.ChangeDutyCycle(speed)
+    a.ChangeDutyCycle(0)
+    b.ChangeDutyCycle(speed)
+    q.ChangeFrequency(max(speed/2, 10))
+    b.ChangeFrequency(max(speed/2, 10))
     lDir = -1
     rDir = -1
-    message = { 'wheelMotors': { 'l': [0, speed], 'r': [0, speed] }}
-    requestSession.post(simulatorUiUrl, json=message)
 
 # spinLeft(speed): Sets motors to turn opposite directions at speed. 0 <= speed <= 100
 def spinLeft(speed):
     global lDir, rDir
     if (lDir == 1 or rDir == -1):
         brake()
-        sleep(0.2)
-    # p.ChangeDutyCycle(0)
-    # q.ChangeDutyCycle(speed)
-    # a.ChangeDutyCycle(speed)
-    # b.ChangeDutyCycle(0)
-    # q.ChangeFrequency(min(speed+5, 20))
-    # a.ChangeFrequency(min(speed+5, 20))
+        time.sleep(0.2)
+    p.ChangeDutyCycle(0)
+    q.ChangeDutyCycle(speed)
+    a.ChangeDutyCycle(speed)
+    b.ChangeDutyCycle(0)
+    q.ChangeFrequency(min(speed+5, 20))
+    a.ChangeFrequency(min(speed+5, 20))
     lDir = -1
     rDir = 1
-    message = { 'wheelMotors': { 'l': [0, speed], 'r': [speed, 0] }}
-    requestSession.post(simulatorUiUrl, json=message)
 
 # spinRight(speed): Sets motors to turn opposite directions at speed. 0 <= speed <= 100
 def spinRight(speed):
     global lDir, rDir
     if (lDir == -1 or rDir == 1):
         brake()
-        sleep(0.2)
-    # p.ChangeDutyCycle(speed)
-    # q.ChangeDutyCycle(0)
-    # a.ChangeDutyCycle(0)
-    # b.ChangeDutyCycle(speed)
-    # p.ChangeFrequency(min(speed+5, 20))
-    # b.ChangeFrequency(min(speed+5, 20))
+        time.sleep(0.2)
+    p.ChangeDutyCycle(speed)
+    q.ChangeDutyCycle(0)
+    a.ChangeDutyCycle(0)
+    b.ChangeDutyCycle(speed)
+    p.ChangeFrequency(min(speed+5, 20))
+    b.ChangeFrequency(min(speed+5, 20))
     lDir = 1
     rDir = -1
-    message = { 'wheelMotors': { 'l': [speed, 0], 'r': [0, speed] }}
-    requestSession.post(simulatorUiUrl, json=message)
-
 
 # turnForward(leftSpeed, rightSpeed): Moves forwards in an arc by setting different speeds. 0 <= leftSpeed,rightSpeed <= 100
 def turnForward(leftSpeed, rightSpeed):
     global lDir, rDir
     if (lDir == -1 or rDir == -1):
         brake()
-        sleep(0.2)
-    # p.ChangeDutyCycle(leftSpeed)
-    # q.ChangeDutyCycle(0)
-    # a.ChangeDutyCycle(rightSpeed)
-    # b.ChangeDutyCycle(0)
-    # p.ChangeFrequency(min(leftSpeed+5, 20))
-    # a.ChangeFrequency(min(rightSpeed+5, 20))
+        time.sleep(0.2)
+    p.ChangeDutyCycle(leftSpeed)
+    q.ChangeDutyCycle(0)
+    a.ChangeDutyCycle(rightSpeed)
+    b.ChangeDutyCycle(0)
+    p.ChangeFrequency(min(leftSpeed+5, 20))
+    a.ChangeFrequency(min(rightSpeed+5, 20))
     lDir = 1
     rDir = 1
-    message = { 'wheelMotors': { 'l': [leftSpeed, 0], 'r': [rightSpeed, 0] }}
-    requestSession.post(simulatorUiUrl, json=message)
 
 # turnReverse(leftSpeed, rightSpeed): Moves backwards in an arc by setting different speeds. 0 <= leftSpeed,rightSpeed <= 100
 def turnReverse(leftSpeed, rightSpeed):
     global lDir, rDir
     if (lDir == 1 or rDir == 1):
         brake()
-        sleep(0.2)
-    # p.ChangeDutyCycle(0)
-    # q.ChangeDutyCycle(leftSpeed)
-    # a.ChangeDutyCycle(0)
-    # b.ChangeDutyCycle(rightSpeed)
-    # q.ChangeFrequency(min(leftSpeed+5, 20))
-    # b.ChangeFrequency(min(rightSpeed+5, 20))
+        time.sleep(0.2)
+    p.ChangeDutyCycle(0)
+    q.ChangeDutyCycle(leftSpeed)
+    a.ChangeDutyCycle(0)
+    b.ChangeDutyCycle(rightSpeed)
+    q.ChangeFrequency(min(leftSpeed+5, 20))
+    b.ChangeFrequency(min(rightSpeed+5, 20))
     lDir = -1
     rDir = -1
-    message = { 'wheelMotors': { 'l': [0, leftSpeed], 'r': [0, rightSpeed] }}
-    requestSession.post(simulatorUiUrl, json=message)
 
 # End of Motor Functions
 #======================================================================
@@ -263,7 +318,6 @@ def stopR():
     a.ChangeDutyCycle(100)
     b.ChangeDutyCycle(100)
 
-    
 def lCounter(pin):
     global countL, targetL
     countL += 1
@@ -287,7 +341,7 @@ def stepForward(speed, counts):
     targetR = counts-(speed/20)
     forward(speed)
     while (targetL != -1) or (targetR != -1):
-        sleep(0.002)
+        time.sleep(0.002)
 
 # stepReverse(speed, steps): Moves backward specified number of counts, then stops
 def stepReverse(speed, counts):
@@ -298,7 +352,7 @@ def stepReverse(speed, counts):
     targetR = counts-(speed/20)
     reverse(speed)
     while (targetL != -1) or (targetR != -1):
-        sleep(0.002)
+        time.sleep(0.002)
 
 # stepSpinL(speed, steps): Spins left specified number of counts, then stops
 def stepSpinL(speed, counts):
@@ -309,7 +363,7 @@ def stepSpinL(speed, counts):
     targetR = counts-(speed/20)
     spinLeft(speed)
     while (targetL != -1) or (targetR != -1):
-        sleep(0.002)
+        time.sleep(0.002)
 
 # stepSpinR(speed, steps): Spins right specified number of counts, then stops
 def stepSpinR(speed, counts):
@@ -320,7 +374,7 @@ def stepSpinR(speed, counts):
     targetR = counts-(speed/20)
     spinRight(speed)
     while (targetL != -1) or (targetR != -1):
-        sleep(0.002)
+        time.sleep(0.002)
 
 
 # End of Wheel Sensor Functions
@@ -332,38 +386,38 @@ def stepSpinR(speed, counts):
 #
 # irLeft(): Returns state of Left IR Obstacle sensor
 def irLeft():
-    # if GPIO.input(irFL)==0:
+    if GPIO.input(irFL)==0:
         return True
-    # else:
-    #     return False
+    else:
+        return False
 
 # irRight(): Returns state of Right IR Obstacle sensor
 def irRight():
-    # if GPIO.input(irFR)==0:
+    if GPIO.input(irFR)==0:
         return True
-    # else:
-    #     return False
+    else:
+        return False
 
 # irAll(): Returns true if either of the Obstacle sensors are triggered
 def irAll():
-    # if GPIO.input(irFL)==0 or GPIO.input(irFR)==0:
+    if GPIO.input(irFL)==0 or GPIO.input(irFR)==0:
         return True
-    # else:
-    #     return False
+    else:
+        return False
 
 # irLeftLine(): Returns state of Left IR Line sensor
 def irLeftLine():
-    # if GPIO.input(lineLeft)==0:
+    if GPIO.input(lineLeft)==0:
         return True
-    # else:
-    #     return False
+    else:
+        return False
 
 # irRightLine(): Returns state of Right IR Line sensor
 def irRightLine():
-    # if GPIO.input(lineRight)==0:
+    if GPIO.input(lineRight)==0:
         return True
-    # else:
-    #     return False
+    else:
+        return False
 
 # End of IR Sensor Functions
 #======================================================================
@@ -378,7 +432,7 @@ def getDistance(): # default to front sensor
     GPIO.setup(sonar, GPIO.OUT)
     # Send 10us pulse to trigger
     GPIO.output(sonar, True)
-    sleep(0.00001)
+    time.sleep(0.00001)
     GPIO.output(sonar, False)
     start = time.time()
     count=time.time()
@@ -448,15 +502,47 @@ def wheel(pos):
 # Servo Functions
 
 def setServo(Servo, Degrees):
-    message = { 'servos': { Servo: Degrees }}
-    requestSession.post(simulatorUiUrl, json=message)
+    pca9685.setServo(Servo, Degrees + offsets[Servo])
 
 def stopServos():
     for i in range(16):
         pca9685.stopServo(i)
-
+    
 # End of Servo Functions
 #======================================================================
+
+#======================================================================
+# Keypad Functions
+
+def getKey():
+    keys = 0
+    count = 0
+    fred = 0
+    
+    GPIO.output(keypadOut, 0)
+    while (keys == 0):
+        #GPIO.output(keypadOut, 1)
+        time.sleep(0.00001)
+        while (GPIO.input(keypadIn) == 1):
+            count += 1
+            if (count > 1000):
+                count = 0
+                time.sleep(0.001)
+        while (GPIO.input(keypadIn) == 0):
+            pass
+        for index in range(16):
+            GPIO.output(keypadOut, 0)
+            fred += 1 # dummy
+            keys = (keys << 1) + GPIO.input(keypadIn)
+            GPIO.output(keypadOut, 1)
+            fred -= 1 # dummy
+        keys = 65535 - keys
+    return keys
+
+            
+# End of Keypad Functions
+#======================================================================
+
 
 #======================================================================
 # EEROM Functions
@@ -470,7 +556,7 @@ def rdEEROM(Address):
 # Low level write function. Writes Data to actual Address
 def wrEEROM(Address, Data):
     bus.write_i2c_block_data(EEROM, Address >> 8, [Address & 0xff, Data])
-    sleep(0.01)
+    time.sleep(0.01)
 
 # General Read Function. Ignores first 16 bytes
 def readEEROM(Address):
@@ -490,6 +576,9 @@ def saveOffsets():
     for idx in range(16):
         wrEEROM(idx, offsets[idx])
 
-
+            
 # End of EEROM Functions
 #======================================================================
+
+
+  

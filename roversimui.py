@@ -68,6 +68,7 @@ servo_RL = 11
 servo_RR = 13
 servo_MA = 0
 
+showSteeringCalcs = False
 
 # Receives requests
 class ServerWorker(QObject):
@@ -188,7 +189,8 @@ class Rover:
                 turningCircleX = turningCircleRelativeToVehicleX + self.vehicleXcm
                 turningCircleY = turningCircleRelativeToVehicleY + self.vehicleYcm
 
-                print("Turning circle centre: " + str([int(turningCircleX),int(turningCircleY)]))
+                if showSteeringCalcs:
+                    print("Turning circle centre: " + str([int(turningCircleX),int(turningCircleY)]))
                 
 
                 # Work out where vehicle will go as it moves around the turning circle
@@ -245,8 +247,9 @@ class Rover:
         # yChangeCm = distanceMovedCmSinceLastUpdate * math.cos(headingInRadians)
         # self.vehicleXcm += xChangeCm
         # self.vehicleYcm += yChangeCm
-        print("X,Y: " + str(self.vehicleXcm) + ", " + str(self.vehicleYcm))
-        print("Heading: " + str(self.vehicleHeadingDegrees))
+        if showSteeringCalcs:
+            print("X,Y: " + str(self.vehicleXcm) + ", " + str(self.vehicleYcm))
+            print("Heading: " + str(self.vehicleHeadingDegrees))
 
 
 class MainWindow(QWidget):
@@ -338,6 +341,7 @@ class MainWindow(QWidget):
         self.updateTimer.start(100)
 
     def on_change(self, s):
+        print(s)
         data = json.loads(s)
         if 'servos' in data:
             servos = data['servos']

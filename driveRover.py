@@ -42,11 +42,23 @@ servo_MA = 0
 import msvcrt
 def readchar():
     key = msvcrt.getch()
-    return chr(key)
+    val = 0
+    for v in key:
+        val = v + (val << 8)
+    return chr(val)
 
 def readkey(getchar_fn=None):
     getchar = getchar_fn or readchar
     c1 = getchar()
+    if ord(c1) == 0xe0:
+        # On Windows, we get this with arrow keys
+        # and it's followed by a number indicating
+        # direction
+        d = getchar()
+        if d == 'K': return chr(19) # Left
+        if d == 'M': return chr(18) # Right
+        if d == 'H': return chr(16) # Up
+        if d == 'P': return chr(17) # Left
     if ord(c1) != 0x1b:
         return c1
     c2 = getchar()
