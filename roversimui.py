@@ -273,8 +273,8 @@ class MainWindow(QWidget):
 
         self.setWindowTitle("M.A.R.S. Rover")
         self.setGeometry(100, 100, 750, 750)
-        self.helloMsg = QLabel("<h1>Hello, World!</h1>", parent=self)
-        self.helloMsg.move(60, 0)
+        # self.helloMsg = QLabel("<h1>Hello, World!</h1>", parent=self)
+        # self.helloMsg.move(60, 0)
 
         # roverImage = QPixmap("rover.png")
         # self.visRoverGroup.addToGroup(QGraphicsPixmapItem(roverImage))
@@ -321,8 +321,8 @@ class MainWindow(QWidget):
         scene.addItem(self.visRoverGroup)
         #self.scRover.setTransform(tx)
         self.roverIcon = QGraphicsView(scene, parent=self)
-        self.roverIcon.move(0, 120)
-        self.roverIcon.resize(410, 410)
+        self.roverIcon.move(0, 0)
+        self.roverIcon.resize(720, 720)
 
         # self.roverIcon = QLabel(parent=self)
         # self.roverIcon.setPixmap(roverImage.transformed(tx))
@@ -365,7 +365,7 @@ class MainWindow(QWidget):
                 self.rover.setRgbLed(ledId, rgbLeds[led])
 
 
-        self.helloMsg.setText(s)
+        # self.helloMsg.setText(s)
         # self.scRover.setPos(data['location']['x'], data['location']['y'])
         # tx = QTransform()
         # tx.rotate(data['rotation'])
