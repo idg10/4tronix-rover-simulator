@@ -316,7 +316,7 @@ class MainWindow(QWidget):
 
         scene = QGraphicsScene()
         scene.setSceneRect(QRectF(-200, -200, 400, 400))
-        scene.addRect(QRectF(0, 0, 100, 100), QPen(QColor(255,0,0)), QBrush(QColor(255,255,0)))
+        scene.addRect(QRectF(-200, -150, 400, 300), QPen(QColor(100,0,0)), QBrush(QColor(99,66,0)))
         #self.scRover = scene.addPixmap(roverImage)
         scene.addItem(self.visRoverGroup)
         #self.scRover.setTransform(tx)
