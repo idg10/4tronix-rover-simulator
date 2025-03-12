@@ -8,6 +8,7 @@ servo_FR = 15
 servo_RR = 13
 servo_MA = 0
 
+rover.init(0)
 
 # Get the rover moving forward at full speed.
 #
