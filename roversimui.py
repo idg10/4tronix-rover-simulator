@@ -85,7 +85,7 @@ class ServerWorker(QObject):
         self.mysignal.emit(bodyText)
         return request.data
 
-fullSpeedCmPerSecond = 10
+fullSpeedCmPerSecond = 9
 
 class Rover:
     vehicleWidthCm = 16
@@ -104,13 +104,13 @@ class Rover:
         self.servos[servoId] = value
 
     def setWheelMotorLeft(self, fwd, rev):
-        if fwd > 0 & rev > 0:
+        if fwd > 0 and rev > 0:
             self.speedL = 0
         else:
             self.speedL = fwd - rev
 
     def setWheelMotorRight(self, fwd, rev):
-        if fwd > 0 & rev > 0:
+        if fwd > 0 and rev > 0:
             self.speedR = 0
         else:
             self.speedR = fwd - rev
@@ -202,12 +202,24 @@ class Rover:
             return [updatedVehicleX, updatedVehicleY, self.vehicleHeadingDegrees + headingChangeDegrees]
 
         # We'll work out where each steerable wheel is attempting to push the rover.
-        # Ideally they'll all be working together. But if they aren't, we'll just
-        # use the average.
+        # For spinning in place, we need to handle opposite wheel directions specially
+        if (self.speedL > 0 and self.speedR < 0) or (self.speedL < 0 and self.speedR > 0):
+            # Spinning in place
+            spinSpeed = max(abs(self.speedL), abs(self.speedR))
+            spinSpeedRadiansPerSecond = (spinSpeed / 100.0) * (36.0 * math.pi / 180.0)  # Full speed = 36 degrees per second
+            headingChange = spinSpeedRadiansPerSecond * timeSinceLastUpdate * (180.0 / math.pi)
+            if self.speedL < 0:  # Spinning left
+                headingChange = -headingChange
+            
+            self.vehicleHeadingDegrees += headingChange
+            # When spinning in place, position doesn't change
+            return
+
+        # Normal movement calculation for non-spin cases
         [updatedXFL, updatedYFL, updatedHeadingFL] = calculateSteeredPosition(True, True, self.servos[servo_FL], self.speedL, timeSinceLastUpdate)
-        [updatedXFR, updatedYFR, updatedHeadingFR] = calculateSteeredPosition(False, True, self.servos[servo_FL], self.speedL, timeSinceLastUpdate)
-        [updatedXBL, updatedYBL, updatedHeadingBL] = calculateSteeredPosition(True, False, self.servos[servo_FL], self.speedL, timeSinceLastUpdate)
-        [updatedXBR, updatedYBR, updatedHeadingBR] = calculateSteeredPosition(False, False, self.servos[servo_FL], self.speedL, timeSinceLastUpdate)
+        [updatedXFR, updatedYFR, updatedHeadingFR] = calculateSteeredPosition(False, True, self.servos[servo_FR], self.speedR, timeSinceLastUpdate)
+        [updatedXBL, updatedYBL, updatedHeadingBL] = calculateSteeredPosition(True, False, self.servos[servo_RL], self.speedL, timeSinceLastUpdate)
+        [updatedXBR, updatedYBR, updatedHeadingBR] = calculateSteeredPosition(False, False, self.servos[servo_RR], self.speedR, timeSinceLastUpdate)
 
         updatedXAverage = (updatedXFL + updatedXFR + updatedXBL + updatedXBR) / 4
         updatedYAverage = (updatedYFL + updatedYFR + updatedYBL + updatedYBR) / 4
