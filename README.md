@@ -155,6 +155,6 @@ time.sleep(3000)
 
 
 # ...and rest.
-rover.forward(100)
+rover.forward(0)
 ```
 
