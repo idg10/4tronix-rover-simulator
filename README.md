@@ -94,7 +94,26 @@ import roversimulator as rover
 
 this tells Python that anything in the code that uses the `rover` module should use the simulator instead.
 
-Here's a simple example (which you can run by opening the [very-simple-example.py](very-simple-example.py) file in VS Code, and then running it by pressing F5):
+Here's a simple example using the forward and spin functions to start drawing a square. 
+Complete square code is in [square.py](square.py), Which you can run by opening and then running it (e.g. by pressing F5 in Visual Studio).
+```py
+import roversimulator as rover
+import time
+
+rover.forward(100) # 100 is the speed, not distance #TODO: turtle interface
+time.sleep(10) # 10 seconds
+rover.stop()
+time.sleep(0.5) # take a short break
+
+
+rover.spinRight(100) # 100 is the speed, not degrees
+time.sleep(2.5) # 2.5s is about 90 degrees
+rover.stop()
+time.sleep(0.5) # take a short break
+
+```
+
+Here's a simple example of direct servo control which is in the [very-simple-example.py](very-simple-example.py) file. Which you can run by opening and then running it (e.g. by pressing F5 in Visual Studio).
 
 ```py
 import roversimulator as rover
